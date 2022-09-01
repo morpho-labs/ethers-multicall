@@ -73,8 +73,7 @@
     }
   },
   "publishConfig": {
-    "access": "public",
-    "registry": "https://npm.pkg.github.com/"
+    "access": "public"
   },
   "lint-staged": {
     "*.ts": "eslint --cache --cache-location .eslintcache --fix"
