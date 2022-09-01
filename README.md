@@ -9,6 +9,9 @@
 
 > ⚡🚀 Call multiple view functions, from multiple Smart Contracts, in a single RPC query!
 
+Querying an RPC endpoint can be very costly (**100+ queries**) when loading data from multiple smart contracts.
+With multicall, batch these queries into a single, on-chain query, without additional over-head!
+
 This is the standalone package of the library formerly created & used by [Zapper](https://github.com/Zapper-fi/studio/tree/main/src/multicall).
 
 ## Install
