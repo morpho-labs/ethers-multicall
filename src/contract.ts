@@ -40,12 +40,7 @@ export class MulticallContract {
       const fn = (...params: any[]): ContractCall => ({
         fragment: frag,
         address,
-        ...(params.length > frag.inputs.length
-          ? {
-              params: params.slice(0, frag.inputs.length),
-              overrides: params[frag.inputs.length],
-            }
-          : { params, overrides: {} }),
+        params,
         stack,
       });
 

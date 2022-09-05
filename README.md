@@ -32,8 +32,16 @@ import { ethers } from "ethers";
 import { EthersMulticall } from "@morpho-labs/ethers-multicall";
 
 const provider = new ethers.providers.JsonRpcBatchProvider("...");
-const multicall = new EthersMulticall(provider); // pass the chainId as second parameter (defaults to 1 = mainnet)
-// const multicall = await EthersMulticall.new(provider) // if the chainId is unknown, defaults to the provider's network chainId
+// pass the chainId as option (second parameter, defaults to 1 = mainnet)
+const multicall = new EthersMulticall(provider);
+
+// if the chainId is unknown, defaults to the provider's network chainId
+// const multicall = await EthersMulticall.new(provider)
+
+// if you want to query with overrides (such as a blockTag), pass them as options:
+// const multicall = new EthersMulticall(provider, { chainId, overrides: { blockTag } })
+// or manually change them:
+// multicall.overrides.blockTag = 14999999
 
 const uni = multicall.wrap(
   new ethers.Contract("0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", UniswapAbi)

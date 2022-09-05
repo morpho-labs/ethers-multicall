@@ -106,5 +106,18 @@ describe("index", () => {
         "latest",
       ]);
     });
+
+    it("should fetch UNI.balanceOf(cUNI) at block 14000000", async () => {
+      const multicall = new EthersMulticall(rpcProvider, {
+        overrides: {
+          blockTag: 14000000,
+        },
+      });
+      const wrappedUni = multicall.wrap(_uni);
+
+      const balance = await wrappedUni.balanceOf("0x35A18000230DA775CAc24873d00Ff85BccdeD550");
+
+      expect(balance.toString()).toEqual("9043006006625928002643013");
+    });
   });
 });

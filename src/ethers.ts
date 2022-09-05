@@ -11,7 +11,6 @@ export type ContractCall = {
   fragment: FunctionFragment;
   address: string;
   params: any[];
-  overrides: ethers.CallOverrides;
   stack?: string;
 };
 
@@ -26,16 +25,28 @@ export type MulticallCallbackHooks = {
 
 const DEFAULT_DATALOADER_OPTIONS = { cache: false, maxBatchSize: 250 };
 
+export interface EthersMulticallOptions {
+  chainId: number;
+  overrides: ethers.CallOverrides;
+  dataLoaderOptions: DataLoader.Options<ContractCall, any>;
+  callbackHooks: MulticallCallbackHooks;
+}
+
 export class EthersMulticall implements IMulticallWrapper {
   private multicall: Multicall;
   private dataLoader: DataLoader<ContractCall, any>;
   private beforeCallHook?: (calls: ContractCall[], callRequests: CallStruct[]) => void;
 
+  public overrides: ethers.CallOverrides;
+
   constructor(
     provider: ethers.providers.Provider,
-    chainId: number = 1,
-    dataLoaderOptions: DataLoader.Options<ContractCall, any> = DEFAULT_DATALOADER_OPTIONS,
-    { beforeCallHook }: MulticallCallbackHooks = {}
+    {
+      chainId = 1,
+      dataLoaderOptions = DEFAULT_DATALOADER_OPTIONS,
+      callbackHooks = {},
+      overrides = {},
+    }: Partial<EthersMulticallOptions> = {}
   ) {
     const multicallAddress = MULTICALL_ADDRESSES[chainId];
     if (!multicallAddress) throw new Error(`Multicall not supported on chain with id "${chainId}"`);
@@ -46,17 +57,24 @@ export class EthersMulticall implements IMulticallWrapper {
       this.doCalls.bind(this),
       dataLoaderOptions
     );
-    this.beforeCallHook = beforeCallHook;
+    this.beforeCallHook = callbackHooks.beforeCallHook;
+    this.overrides = overrides;
   }
 
   static async new(
     provider: ethers.providers.Provider,
+    overrides?: ethers.CallOverrides,
     dataLoaderOptions: DataLoader.Options<ContractCall, any> = DEFAULT_DATALOADER_OPTIONS,
     callbackHooks: MulticallCallbackHooks = {}
   ) {
     const network = await provider.getNetwork();
 
-    return new EthersMulticall(provider, network.chainId, dataLoaderOptions, callbackHooks);
+    return new EthersMulticall(provider, {
+      chainId: network.chainId,
+      overrides,
+      dataLoaderOptions,
+      callbackHooks,
+    });
   }
 
   get contract() {
@@ -70,7 +88,7 @@ export class EthersMulticall implements IMulticallWrapper {
     }));
 
     if (this.beforeCallHook) this.beforeCallHook(calls, callRequests);
-    const res = await this.multicall.callStatic.aggregate(callRequests, false);
+    const res = await this.multicall.callStatic.aggregate(callRequests, false, this.overrides);
 
     if (res.returnData.length !== callRequests.length) {
       throw new Error(
