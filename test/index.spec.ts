@@ -119,5 +119,37 @@ describe("index", () => {
 
       expect(balance.toString()).toEqual("9043006006625928002643013");
     });
+
+    it("should fetch UNI.totalSupply at block 14000000", async () => {
+      const rpcProvider2 = new ethers.providers.JsonRpcProvider(httpRpcUrl, 1);
+
+      const multicall = new EthersMulticall(rpcProvider, {
+        overrides: {
+          blockTag: 14000000,
+        },
+      });
+      const wrappedUni = multicall.wrap(_uni);
+
+      const send = rpcProvider.send.bind(rpcProvider);
+      const send2 = rpcProvider2.send.bind(rpcProvider2);
+
+      jest
+        .spyOn(rpcProvider, "send")
+        .mockImplementation(async (method, ...args) => send(method, ...args));
+      jest
+        .spyOn(rpcProvider2, "send")
+        .mockImplementation(async (method, ...args) => send2(method, ...args));
+
+      const totalSupplyBefore = await wrappedUni.totalSupply();
+
+      expect(rpcProvider.send).toBeCalledTimes(2);
+
+      await multicall.setProvider(rpcProvider2, 1);
+      const totalSupplyAfter = await wrappedUni.totalSupply();
+
+      expect(rpcProvider2.send).toBeCalledTimes(2);
+
+      expect(totalSupplyBefore.toString()).toEqual(totalSupplyAfter.toString());
+    });
   });
 });

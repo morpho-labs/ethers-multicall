@@ -81,6 +81,15 @@ export class EthersMulticall implements IMulticallWrapper {
     return this.multicall;
   }
 
+  async setProvider(provider: ethers.providers.Provider, chainId?: number) {
+    chainId ??= (await provider.getNetwork()).chainId;
+
+    const multicallAddress = MULTICALL_ADDRESSES[chainId];
+    if (!multicallAddress) throw new Error(`Multicall not supported on chain with id "${chainId}"`);
+
+    this.multicall = new Contract(multicallAddress, MulticallAbi, provider) as Multicall;
+  }
+
   private async doCalls(calls: ContractCall[]) {
     const callRequests = calls.map((call) => ({
       target: call.address,
