@@ -32,13 +32,11 @@ export class EthersMulticall implements IMulticallWrapper {
   private beforeCallHook?: (calls: ContractCall[], callRequests: CallStruct[]) => void;
 
   constructor(
-    provider: ethers.providers.BaseProvider,
+    provider: ethers.providers.Provider,
     chainId: number = 1,
     dataLoaderOptions: DataLoader.Options<ContractCall, any> = DEFAULT_DATALOADER_OPTIONS,
     { beforeCallHook }: MulticallCallbackHooks = {}
   ) {
-    chainId ??= provider.network.chainId;
-
     const multicallAddress = MULTICALL_ADDRESSES[chainId];
     if (!multicallAddress) throw new Error(`Multicall not supported on chain with id "${chainId}"`);
 
@@ -49,6 +47,16 @@ export class EthersMulticall implements IMulticallWrapper {
       dataLoaderOptions
     );
     this.beforeCallHook = beforeCallHook;
+  }
+
+  static async new(
+    provider: ethers.providers.Provider,
+    dataLoaderOptions: DataLoader.Options<ContractCall, any> = DEFAULT_DATALOADER_OPTIONS,
+    callbackHooks: MulticallCallbackHooks = {}
+  ) {
+    const network = await provider.getNetwork();
+
+    return new EthersMulticall(provider, network.chainId, dataLoaderOptions, callbackHooks);
   }
 
   get contract() {
