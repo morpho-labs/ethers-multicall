@@ -5,7 +5,6 @@ import { ContractCall } from "./ethers";
 export class MulticallContract {
   private _address: string;
   private _abi: Fragment[];
-  private _stack?: string;
   private _functions: FunctionFragment[];
 
   get address() {
@@ -24,9 +23,8 @@ export class MulticallContract {
     return this._functions;
   }
 
-  constructor(address: string, abi: JsonFragment[] | string[] | Fragment[], stack?: string) {
+  constructor(address: string, abi: JsonFragment[] | string[] | Fragment[]) {
     this._address = address;
-    this._stack = stack;
 
     this._abi = abi.map((item: JsonFragment | string | Fragment) => Fragment.from(item));
     this._functions = this._abi
@@ -41,7 +39,6 @@ export class MulticallContract {
         fragment: frag,
         address,
         params,
-        stack,
       });
 
       if (!this[frag.name])

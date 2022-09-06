@@ -15,7 +15,7 @@ let rpcProvider: ethers.providers.JsonRpcProvider;
 let _morpho: ethers.Contract;
 let _uni: ethers.Contract;
 
-describe("index", () => {
+describe("ethers-multicall", () => {
   beforeEach(() => {
     rpcProvider = new ethers.providers.JsonRpcProvider(httpRpcUrl, 1);
 
@@ -150,6 +150,19 @@ describe("index", () => {
       expect(rpcProvider2.send).toBeCalledTimes(2);
 
       expect(totalSupplyBefore.toString()).toEqual(totalSupplyAfter.toString());
+    });
+
+    it("should throw a descriptive Error when querying unknown contract", async () => {
+      const multicall = new EthersMulticall(rpcProvider);
+      const wrappedUnknown = multicall.wrap(
+        new ethers.Contract("0xd6409e50c05879c5B9E091EB01E9Dd776d00A151", UniswapAbi)
+      );
+
+      expect(wrappedUnknown.symbol).rejects.toThrow(
+        new Error(
+          `Multicall call failed for 0xd6409e50c05879c5B9E091EB01E9Dd776d00A151:symbol(): call revert exception [ See: https://links.ethers.org/v5-errors-CALL_EXCEPTION ] (method="symbol()", data="0x", errorArgs=null, errorName=null, errorSignature=null, reason=null, code=CALL_EXCEPTION, version=abi/5.7.0)`
+        )
+      );
     });
   });
 });

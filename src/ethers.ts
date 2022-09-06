@@ -119,13 +119,14 @@ export class EthersMulticall implements IMulticallWrapper {
       try {
         const outputs = call.fragment.outputs!;
         const result = new Interface([]).decodeFunctionResult(call.fragment, data);
+
         return outputs.length === 1 ? result[0] : result;
       } catch (err: any) {
-        const error = new Error(
-          `Multicall call failed for ${callIdentifier}: ${err.message} (decode)`
-        );
+        const error = new Error(`Multicall call failed for ${callIdentifier}: ${err.message}`);
+        error.name = error.message;
         error.stack = call.stack;
-        return error;
+
+        throw error;
       }
     });
 
@@ -134,8 +135,7 @@ export class EthersMulticall implements IMulticallWrapper {
 
   wrap<T extends TargetContract>(contract: T) {
     const abi = contract.interface.fragments;
-    const stack = new Error().stack?.split("\n").slice(1).join("\n");
-    const multicallContract = new MulticallContract(contract.address, abi as any, stack);
+    const multicallContract = new MulticallContract(contract.address, abi as any);
 
     const funcs = abi.reduce((memo, frag) => {
       if (frag.type !== "function") return memo;
@@ -146,8 +146,10 @@ export class EthersMulticall implements IMulticallWrapper {
       // Overwrite the function with a dataloader batched call
       const multicallFunc = multicallContract[funcFrag.name].bind(multicallContract);
       const newFunc = (...args: any) => {
+        const stack = new Error().stack?.split("\n").slice(1).join("\n");
+
         const contractCall = multicallFunc(...args);
-        return this.dataLoader.load(contractCall);
+        return this.dataLoader.load({ ...contractCall, stack });
       };
 
       memo[funcFrag.name] = newFunc;
