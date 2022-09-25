@@ -1,9 +1,9 @@
 import DataLoader from "dataloader";
 import { Contract, ethers } from "ethers";
 import { FunctionFragment, Interface } from "ethers/lib/utils";
+import _cloneDeep from "lodash/cloneDeep";
 
 import MulticallAbi from "./abi.json";
-import { MulticallContract } from "./contract";
 import { Multicall, IMulticallWrapper, CallStruct } from "./interface";
 import { MULTICALL_ADDRESSES } from "./registry";
 
@@ -134,30 +134,34 @@ export class EthersMulticall implements IMulticallWrapper {
   }
 
   wrap<T extends TargetContract>(contract: T) {
-    const abi = contract.interface.fragments;
-    const multicallContract = new MulticallContract(contract.address, abi as any);
+    const copy = Object.setPrototypeOf(_cloneDeep(contract), Object.getPrototypeOf(contract));
 
-    const funcs = abi.reduce((memo, frag) => {
-      if (frag.type !== "function") return memo;
-
-      const funcFrag = frag as FunctionFragment;
-      if (!["pure", "view"].includes(funcFrag.stateMutability)) return memo;
-
-      // Overwrite the function with a dataloader batched call
-      const multicallFunc = multicallContract[funcFrag.name].bind(multicallContract);
-      const newFunc = (...args: any) => {
-        const stack = new Error().stack?.split("\n").slice(1).join("\n");
-
-        const contractCall = multicallFunc(...args);
-        return this.dataLoader.load({ ...contractCall, stack });
+    (
+      contract.interface.fragments.filter(
+        (fragment) =>
+          fragment.type === "function" &&
+          ["pure", "view"].includes((fragment as FunctionFragment).stateMutability)
+      ) as FunctionFragment[]
+    ).forEach((fragment) => {
+      const descriptor = {
+        enumerable: true,
+        writable: false,
+        value: (...params: any) =>
+          this.dataLoader.load({
+            fragment,
+            address: contract.address,
+            stack: new Error().stack?.split("\n").slice(1).join("\n"),
+            params,
+          }),
       };
 
-      memo[funcFrag.name] = newFunc;
+      // Overwrite the function with a dataloader batched call
+      Object.defineProperty(copy, fragment.name, descriptor);
+      Object.defineProperty(copy.callStatic, fragment.name, descriptor);
+      Object.defineProperty(copy.functions, fragment.name, descriptor);
+    });
 
-      return memo;
-    }, {} as Record<string, (...args: any) => any>);
-
-    return Object.setPrototypeOf({ ...contract, ...funcs }, Contract.prototype) as T;
+    return copy;
   }
 }
 

@@ -11,6 +11,7 @@ dotenv.config({ path: ".env.local" });
 const httpRpcUrl = process.env.HTTP_RPC_URL || "https://rpc.ankr.com/eth";
 
 let rpcProvider: ethers.providers.JsonRpcProvider;
+let signer: ethers.Signer;
 
 let _morpho: ethers.Contract;
 let _uni: ethers.Contract;
@@ -18,9 +19,10 @@ let _uni: ethers.Contract;
 describe("ethers-multicall", () => {
   beforeEach(() => {
     rpcProvider = new ethers.providers.JsonRpcProvider(httpRpcUrl, 1);
+    signer = new ethers.Wallet(ethers.Wallet.createRandom().privateKey, rpcProvider);
 
-    _morpho = new ethers.Contract("0x8888882f8f843896699869179fB6E4f7e3B58888", MorphoAbi);
-    _uni = new ethers.Contract("0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", UniswapAbi);
+    _morpho = new ethers.Contract("0x8888882f8f843896699869179fB6E4f7e3B58888", MorphoAbi, signer);
+    _uni = new ethers.Contract("0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", UniswapAbi, signer);
   });
 
   describe("Providers integration", () => {
