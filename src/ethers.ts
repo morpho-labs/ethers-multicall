@@ -134,7 +134,7 @@ export class EthersMulticall implements IMulticallWrapper {
   }
 
   wrap<T extends TargetContract>(contract: T) {
-    const copy = Object.setPrototypeOf(_cloneDeep(contract), Object.getPrototypeOf(contract));
+    const copy = Object.setPrototypeOf(_cloneDeep(contract), Object.getPrototypeOf(contract)) as T;
 
     (
       contract.interface.fragments.filter(

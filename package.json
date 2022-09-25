@@ -1,6 +1,6 @@
 {
   "name": "@morpho-labs/ethers-multicall",
-  "version": "1.4.0",
+  "version": "1.3.3",
   "description": "⚡🚀 Call multiple view functions, from multiple Smart Contracts, in a single RPC query!",
   "main": "lib/src/index.js",
   "files": [
