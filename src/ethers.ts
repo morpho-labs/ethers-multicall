@@ -1,7 +1,7 @@
 import DataLoader from "dataloader";
-import { Contract, ethers } from "ethers";
+import { BaseContract, Contract, ethers } from "ethers";
 import { FunctionFragment, Interface } from "ethers/lib/utils";
-import _cloneDeep from "lodash/cloneDeep";
+import _clone from "lodash/clone";
 
 import MulticallAbi from "./abi.json";
 import { Multicall, IMulticallWrapper, CallStruct } from "./interface";
@@ -13,8 +13,6 @@ export type ContractCall = {
   params: any[];
   stack?: string;
 };
-
-type TargetContract = Pick<Contract, "functions" | "interface" | "callStatic" | "address">;
 
 export const isMulticallUnderlyingError = (err: Error) =>
   err.message.includes("Multicall call failed for");
@@ -133,8 +131,10 @@ export class EthersMulticall implements IMulticallWrapper {
     return result;
   }
 
-  wrap<T extends TargetContract>(contract: T) {
-    const copy = Object.setPrototypeOf(_cloneDeep(contract), Object.getPrototypeOf(contract)) as T;
+  wrap<T extends BaseContract>(contract: T) {
+    const copy = Object.setPrototypeOf(_clone(contract), Object.getPrototypeOf(contract));
+    copy.callStatic = _clone(contract.callStatic);
+    copy.functions = _clone(contract.functions);
 
     (
       contract.interface.fragments.filter(
@@ -161,7 +161,7 @@ export class EthersMulticall implements IMulticallWrapper {
       Object.defineProperty(copy.functions, fragment.name, descriptor);
     });
 
-    return copy;
+    return copy as T;
   }
 }
 

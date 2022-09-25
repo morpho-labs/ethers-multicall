@@ -4,7 +4,6 @@ import type {
   BigNumberish,
   BytesLike,
   CallOverrides,
-  Contract,
   ContractTransaction,
   Overrides,
   PopulatedTransaction,
@@ -16,8 +15,6 @@ import type {
 
 import type { FunctionFragment, Result } from "@ethersproject/abi";
 import type { Listener } from "@ethersproject/providers";
-
-export type TargetContract = Pick<Contract, "functions" | "interface" | "callStatic" | "address">;
 
 export type CallStruct = { target: string; callData: BytesLike };
 
@@ -255,5 +252,5 @@ export interface Multicall extends BaseContract {
 
 export interface IMulticallWrapper {
   get contract(): Multicall;
-  wrap<T extends TargetContract>(contract: T): T;
+  wrap<T extends BaseContract>(contract: T): T;
 }
