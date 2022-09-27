@@ -14,7 +14,8 @@
     "prepare": "husky install",
     "test:watch": "jest --watch",
     "test": "jest --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "type:multicall": "typechain --target ethers-v5 --out-dir src/contracts 'src/abis/*.json'"
   },
   "repository": {
     "type": "git",
@@ -50,6 +51,7 @@
     "@ethersproject/abi": "^5.7.0",
     "@ethersproject/providers": "^5.7.0",
     "@trivago/prettier-plugin-sort-imports": "^3.3.0",
+    "@typechain/ethers-v5": "^10.1.0",
     "@types/jest": "^27.5.2",
     "@types/lodash": "^4.14.185",
     "@typescript-eslint/eslint-plugin": "^5.34.0",
@@ -67,6 +69,7 @@
     "lint-staged": "^10.5.4",
     "prettier": "^2.7.1",
     "ts-jest": "^27.0.5",
+    "typechain": "^8.1.0",
     "typescript": "^4.7.4"
   },
   "peerDependencies": {

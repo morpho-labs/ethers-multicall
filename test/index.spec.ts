@@ -110,26 +110,20 @@ describe("ethers-multicall", () => {
     });
 
     it("should fetch UNI.balanceOf(cUNI) at block 14000000", async () => {
-      const multicall = new EthersMulticall(rpcProvider, {
-        overrides: {
-          blockTag: 14000000,
-        },
-      });
+      const multicall = new EthersMulticall(rpcProvider);
       const wrappedUni = multicall.wrap(_uni);
 
-      const balance = await wrappedUni.balanceOf("0x35A18000230DA775CAc24873d00Ff85BccdeD550");
+      const balance = await wrappedUni.balanceOf("0x35A18000230DA775CAc24873d00Ff85BccdeD550", {
+        blockTag: 14000000,
+      });
 
       expect(balance.toString()).toEqual("9043006006625928002643013");
     });
 
-    it("should fetch UNI.totalSupply at block 14000000", async () => {
+    it("should fetch UNI.numCheckpoints at block 14000000 with changing provider", async () => {
       const rpcProvider2 = new ethers.providers.JsonRpcProvider(httpRpcUrl, 1);
 
-      const multicall = new EthersMulticall(rpcProvider, {
-        overrides: {
-          blockTag: 14000000,
-        },
-      });
+      const multicall = new EthersMulticall(rpcProvider);
       const wrappedUni = multicall.wrap(_uni);
 
       const send = rpcProvider.send.bind(rpcProvider);
@@ -142,16 +136,22 @@ describe("ethers-multicall", () => {
         .spyOn(rpcProvider2, "send")
         .mockImplementation(async (method, ...args) => send2(method, ...args));
 
-      const totalSupplyBefore = await wrappedUni.totalSupply();
+      const numCheckpointsBefore = await wrappedUni.balanceOf(
+        "0x35A18000230DA775CAc24873d00Ff85BccdeD550",
+        { blockTag: 14000000 }
+      );
 
       expect(rpcProvider.send).toBeCalledTimes(2);
 
       await multicall.setProvider(rpcProvider2, 1);
-      const totalSupplyAfter = await wrappedUni.totalSupply();
+      const numCheckpointsAfter = await wrappedUni.balanceOf(
+        "0x35A18000230DA775CAc24873d00Ff85BccdeD550",
+        { blockTag: 14000000 }
+      );
 
       expect(rpcProvider2.send).toBeCalledTimes(2);
 
-      expect(totalSupplyBefore.toString()).toEqual(totalSupplyAfter.toString());
+      expect(numCheckpointsBefore.toString()).toEqual(numCheckpointsAfter.toString());
     });
 
     it("should throw a descriptive Error when querying unknown contract", async () => {

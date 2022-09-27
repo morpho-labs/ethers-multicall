@@ -1,77 +1,59 @@
 import DataLoader from "dataloader";
-import { BaseContract, Contract, ethers } from "ethers";
+import { BaseContract, ethers } from "ethers";
 import { FunctionFragment, Interface } from "ethers/lib/utils";
 import _clone from "lodash/clone";
 
-import MulticallAbi from "./abi.json";
-import { Multicall, IMulticallWrapper, CallStruct } from "./interface";
+import { Multicall, Multicall__factory } from "./contracts";
 import { MULTICALL_ADDRESSES } from "./registry";
 
 export type ContractCall = {
   fragment: FunctionFragment;
   address: string;
-  params: any[];
   stack?: string;
+  params: any[];
+  overrides?: ethers.CallOverrides;
 };
+
+export type WithIndex<T> = T & { index: number };
 
 export const isMulticallUnderlyingError = (err: Error) =>
   err.message.includes("Multicall call failed for");
 
-export type MulticallCallbackHooks = {
-  beforeCallHook?: (calls: ContractCall[], callRequests: CallStruct[]) => void;
-};
-
-const DEFAULT_DATALOADER_OPTIONS = { cache: false, maxBatchSize: 250 };
+const DEFAULT_DATALOADER_OPTIONS = { cache: false, maxBatchSize: 512 };
 
 export interface EthersMulticallOptions {
   chainId: number;
-  overrides: ethers.CallOverrides;
-  dataLoaderOptions: DataLoader.Options<ContractCall, any>;
-  callbackHooks: MulticallCallbackHooks;
+  options: DataLoader.Options<ContractCall, any>;
 }
 
-export class EthersMulticall implements IMulticallWrapper {
+export class EthersMulticall {
   private multicall: Multicall;
   private dataLoader: DataLoader<ContractCall, any>;
-  private beforeCallHook?: (calls: ContractCall[], callRequests: CallStruct[]) => void;
-
-  public overrides: ethers.CallOverrides;
 
   constructor(
     provider: ethers.providers.Provider,
-    {
-      chainId = 1,
-      dataLoaderOptions = DEFAULT_DATALOADER_OPTIONS,
-      callbackHooks = {},
-      overrides = {},
-    }: Partial<EthersMulticallOptions> = {}
+    { chainId = 1, options = DEFAULT_DATALOADER_OPTIONS }: Partial<EthersMulticallOptions> = {}
   ) {
     const multicallAddress = MULTICALL_ADDRESSES[chainId];
     if (!multicallAddress) throw new Error(`Multicall not supported on chain with id "${chainId}"`);
 
-    this.multicall = new Contract(multicallAddress, MulticallAbi, provider) as Multicall;
+    this.multicall = Multicall__factory.connect(multicallAddress, provider);
     this.dataLoader = new DataLoader(
       // @ts-ignore
       this.doCalls.bind(this),
-      dataLoaderOptions
+      options
     );
-    this.beforeCallHook = callbackHooks.beforeCallHook;
-    this.overrides = overrides;
   }
 
   static async new(
     provider: ethers.providers.Provider,
-    overrides?: ethers.CallOverrides,
-    dataLoaderOptions: DataLoader.Options<ContractCall, any> = DEFAULT_DATALOADER_OPTIONS,
-    callbackHooks: MulticallCallbackHooks = {}
+    options: DataLoader.Options<ContractCall, any> = DEFAULT_DATALOADER_OPTIONS
   ) {
     const network = await provider.getNetwork();
 
     return new EthersMulticall(provider, {
       chainId: network.chainId,
-      overrides,
-      dataLoaderOptions,
-      callbackHooks,
+      options,
     });
   }
 
@@ -85,50 +67,73 @@ export class EthersMulticall implements IMulticallWrapper {
     const multicallAddress = MULTICALL_ADDRESSES[chainId];
     if (!multicallAddress) throw new Error(`Multicall not supported on chain with id "${chainId}"`);
 
-    this.multicall = new Contract(multicallAddress, MulticallAbi, provider) as Multicall;
+    this.multicall = Multicall__factory.connect(multicallAddress, provider);
   }
 
-  private async doCalls(calls: ContractCall[]) {
-    const callRequests = calls.map((call) => ({
-      target: call.address,
-      callData: new Interface([]).encodeFunctionData(call.fragment, call.params),
-    }));
+  private async doCalls(allCalls: ContractCall[]) {
+    const resolvedCalls = await Promise.all(
+      allCalls.map(async (call, index) => ({
+        ...call,
+        index,
+        blockTag: await call.overrides?.blockTag,
+      }))
+    );
 
-    if (this.beforeCallHook) this.beforeCallHook(calls, callRequests);
-    const res = await this.multicall.callStatic.aggregate(callRequests, false, this.overrides);
+    const blockTagCalls = resolvedCalls.reduce((acc, { blockTag = "latest", ...call }) => {
+      blockTag = blockTag.toString();
 
-    if (res.returnData.length !== callRequests.length) {
-      throw new Error(
-        `Unexpected response length: received ${res.returnData.length}; expected ${callRequests.length}`
-      );
-    }
+      return {
+        ...acc,
+        [blockTag]: (acc[blockTag] ?? []).concat([call]),
+      };
+    }, {} as { [blockTag: ethers.providers.BlockTag]: WithIndex<ContractCall>[] });
 
-    const result = calls.map((call, i) => {
-      const signature = FunctionFragment.from(call.fragment).format();
-      const callIdentifier = [call.address, signature].join(":");
-      const [success, data] = res.returnData[i];
+    const results: any[] = [];
+    await Promise.all(
+      Object.values(blockTagCalls).map(async (calls) => {
+        const callStructs = calls.map((call) => ({
+          target: call.address,
+          callData: new Interface([]).encodeFunctionData(call.fragment, call.params),
+        }));
+        const overrides = calls.map(({ overrides }) => overrides).find(Boolean);
 
-      if (!success) {
-        const error = new Error(`Multicall call failed for ${callIdentifier}`);
-        error.stack = call.stack;
-        return error;
-      }
+        const res = overrides
+          ? await this.multicall.callStatic.aggregate(callStructs, false, overrides)
+          : await this.multicall.callStatic.aggregate(callStructs, false);
 
-      try {
-        const outputs = call.fragment.outputs!;
-        const result = new Interface([]).decodeFunctionResult(call.fragment, data);
+        if (res.returnData.length !== calls.length)
+          throw new Error(
+            `Unexpected multicall response length: received ${res.returnData.length}; expected ${calls.length}`
+          );
 
-        return outputs.length === 1 ? result[0] : result;
-      } catch (err: any) {
-        const error = new Error(`Multicall call failed for ${callIdentifier}: ${err.message}`);
-        error.name = error.message;
-        error.stack = call.stack;
+        calls.forEach((call, i) => {
+          const signature = FunctionFragment.from(call.fragment).format();
+          const callIdentifier = [call.address, signature].join(":");
+          const [success, data] = res.returnData[i];
 
-        throw error;
-      }
-    });
+          if (!success) {
+            const error = new Error(`Multicall call failed for ${callIdentifier}`);
+            error.stack = call.stack;
 
-    return result;
+            return (results[call.index] = error);
+          }
+
+          try {
+            const result = new Interface([]).decodeFunctionResult(call.fragment, data);
+
+            return (results[call.index] = call.fragment.outputs!.length === 1 ? result[0] : result);
+          } catch (err: any) {
+            const error = new Error(`Multicall call failed for ${callIdentifier}: ${err.message}`);
+            error.name = error.message;
+            error.stack = call.stack;
+
+            throw error;
+          }
+        });
+      })
+    );
+
+    return results;
   }
 
   wrap<T extends BaseContract>(contract: T) {
@@ -151,7 +156,8 @@ export class EthersMulticall implements IMulticallWrapper {
             fragment,
             address: contract.address,
             stack: new Error().stack?.split("\n").slice(1).join("\n"),
-            params,
+            params: params.slice(0, fragment.inputs.length),
+            overrides: params[fragment.inputs.length],
           }),
       };
 
