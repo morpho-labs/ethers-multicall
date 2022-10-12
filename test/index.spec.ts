@@ -162,7 +162,7 @@ describe("ethers-multicall", () => {
 
       expect(wrappedUnknown.symbol).rejects.toThrow(
         new Error(
-          `Multicall call failed for 0xd6409e50c05879c5B9E091EB01E9Dd776d00A151:symbol(): call revert exception [ See: https://links.ethers.org/v5-errors-CALL_EXCEPTION ] (method="symbol()", data="0x", errorArgs=null, errorName=null, errorSignature=null, reason=null, code=CALL_EXCEPTION, version=abi/5.7.0)`
+          `Multicall result decoding failed for 0xd6409e50c05879c5B9E091EB01E9Dd776d00A151:symbol(): call revert exception [ See: https://links.ethers.org/v5-errors-CALL_EXCEPTION ] (method="symbol()", data="0x", errorArgs=null, errorName=null, errorSignature=null, reason=null, code=CALL_EXCEPTION, version=abi/5.7.0)`
         )
       );
     });

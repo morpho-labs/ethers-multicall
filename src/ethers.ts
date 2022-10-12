@@ -19,7 +19,7 @@ export type WithIndex<T> = T & { index: number };
 export const isMulticallUnderlyingError = (err: Error) =>
   err.message.includes("Multicall call failed for");
 
-const DEFAULT_DATALOADER_OPTIONS = { cache: false, maxBatchSize: 512 };
+const DEFAULT_DATALOADER_OPTIONS = { cache: true, maxBatchSize: 512 };
 
 export interface EthersMulticallOptions {
   chainId: number;
@@ -123,7 +123,9 @@ export class EthersMulticall {
 
             return (results[call.index] = call.fragment.outputs!.length === 1 ? result[0] : result);
           } catch (err: any) {
-            const error = new Error(`Multicall call failed for ${callIdentifier}: ${err.message}`);
+            const error = new Error(
+              `Multicall result decoding failed for ${callIdentifier}: ${err.message}`
+            );
             error.name = error.message;
             error.stack = call.stack;
 
