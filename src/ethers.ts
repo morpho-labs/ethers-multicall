@@ -1,7 +1,9 @@
 import DataLoader from "dataloader";
-import { BaseContract, ethers } from "ethers";
+import { BaseContract, CallOverrides } from "ethers";
 import { FunctionFragment, Interface } from "ethers/lib/utils";
 import _clone from "lodash/clone";
+
+import { BlockTag, Provider } from "@ethersproject/providers";
 
 import { Multicall, Multicall__factory } from "./contracts";
 import { MULTICALL_ADDRESSES } from "./registry";
@@ -11,7 +13,7 @@ export type ContractCall = {
   address: string;
   stack?: string;
   params: any[];
-  overrides?: ethers.CallOverrides;
+  overrides?: CallOverrides;
 };
 
 export type WithIndex<T> = T & { index: number };
@@ -23,6 +25,7 @@ const DEFAULT_DATALOADER_OPTIONS = { cache: true, maxBatchSize: 512 };
 
 export interface EthersMulticallOptions {
   chainId: number;
+  defaultBlockTag: BlockTag;
   options: DataLoader.Options<ContractCall, any>;
 }
 
@@ -30,9 +33,15 @@ export class EthersMulticall {
   private multicall: Multicall;
   private dataLoader: DataLoader<ContractCall, any>;
 
+  public defaultBlockTag: BlockTag;
+
   constructor(
-    provider: ethers.providers.Provider,
-    { chainId = 1, options = DEFAULT_DATALOADER_OPTIONS }: Partial<EthersMulticallOptions> = {}
+    provider: Provider,
+    {
+      chainId = 1,
+      defaultBlockTag = "latest",
+      options = DEFAULT_DATALOADER_OPTIONS,
+    }: Partial<EthersMulticallOptions> = {}
   ) {
     const multicallAddress = MULTICALL_ADDRESSES[chainId];
     if (!multicallAddress) throw new Error(`Multicall not supported on chain with id "${chainId}"`);
@@ -43,17 +52,16 @@ export class EthersMulticall {
       this.doCalls.bind(this),
       options
     );
+
+    this.defaultBlockTag = defaultBlockTag;
   }
 
-  static async new(
-    provider: ethers.providers.Provider,
-    options: DataLoader.Options<ContractCall, any> = DEFAULT_DATALOADER_OPTIONS
-  ) {
+  static async new(provider: Provider, options?: Omit<Partial<EthersMulticallOptions>, "chainId">) {
     const network = await provider.getNetwork();
 
     return new EthersMulticall(provider, {
+      ...options,
       chainId: network.chainId,
-      options,
     });
   }
 
@@ -61,7 +69,7 @@ export class EthersMulticall {
     return this.multicall;
   }
 
-  async setProvider(provider: ethers.providers.Provider, chainId?: number) {
+  async setProvider(provider: Provider, chainId?: number) {
     chainId ??= (await provider.getNetwork()).chainId;
 
     const multicallAddress = MULTICALL_ADDRESSES[chainId];
@@ -79,14 +87,14 @@ export class EthersMulticall {
       }))
     );
 
-    const blockTagCalls = resolvedCalls.reduce((acc, { blockTag = "latest", ...call }) => {
-      blockTag = blockTag.toString();
+    const blockTagCalls = resolvedCalls.reduce((acc, { blockTag, ...call }) => {
+      blockTag = (blockTag ?? this.defaultBlockTag).toString();
 
       return {
         ...acc,
         [blockTag]: (acc[blockTag] ?? []).concat([call]),
       };
-    }, {} as { [blockTag: ethers.providers.BlockTag]: WithIndex<ContractCall>[] });
+    }, {} as { [blockTag: BlockTag]: WithIndex<ContractCall>[] });
 
     const results: any[] = [];
     await Promise.all(
