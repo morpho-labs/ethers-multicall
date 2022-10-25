@@ -1,12 +1,11 @@
 import DataLoader from "dataloader";
-import { BaseContract, CallOverrides } from "ethers";
-import { FunctionFragment, Interface } from "ethers/lib/utils";
+import { BaseContract, BigNumber, CallOverrides } from "ethers";
+import { FunctionFragment, Interface, resolveProperties } from "ethers/lib/utils";
 import _clone from "lodash/clone";
 
 import { BlockTag, Provider } from "@ethersproject/providers";
 
-import { Multicall, Multicall__factory } from "./contracts";
-import { MULTICALL_ADDRESSES } from "./registry";
+import { Multicall3, Multicall3__factory } from "./contracts";
 
 export type ContractCall = {
   fragment: FunctionFragment;
@@ -16,11 +15,10 @@ export type ContractCall = {
   overrides?: CallOverrides;
 };
 
-export type WithIndex<T> = T & { index: number };
-
 export const isMulticallUnderlyingError = (err: Error) =>
   err.message.includes("Multicall call failed for");
 
+const DIGIT_REGEX = /^\d+$/;
 const DEFAULT_DATALOADER_OPTIONS = { cache: true, maxBatchSize: 512 };
 
 export interface EthersMulticallOptions {
@@ -30,7 +28,7 @@ export interface EthersMulticallOptions {
 }
 
 export class EthersMulticall {
-  private multicall: Multicall;
+  private multicall: Multicall3;
   private dataLoader: DataLoader<ContractCall, any>;
 
   public defaultBlockTag: BlockTag;
@@ -38,15 +36,15 @@ export class EthersMulticall {
   constructor(
     provider: Provider,
     {
-      chainId = 1,
       defaultBlockTag = "latest",
       options = DEFAULT_DATALOADER_OPTIONS,
     }: Partial<EthersMulticallOptions> = {}
   ) {
-    const multicallAddress = MULTICALL_ADDRESSES[chainId];
-    if (!multicallAddress) throw new Error(`Multicall not supported on chain with id "${chainId}"`);
-
-    this.multicall = Multicall__factory.connect(multicallAddress, provider);
+    this.multicall = Multicall3__factory.connect(
+      // same address on all networks (cf. https://github.com/mds1/multicall#deployments)
+      "0xcA11bde05977b3631167028862bE2a173976CA11",
+      provider
+    );
     this.dataLoader = new DataLoader(
       // @ts-ignore
       this.doCalls.bind(this),
@@ -56,15 +54,6 @@ export class EthersMulticall {
     this.defaultBlockTag = defaultBlockTag;
   }
 
-  static async new(provider: Provider, options?: Omit<Partial<EthersMulticallOptions>, "chainId">) {
-    const network = await provider.getNetwork();
-
-    return new EthersMulticall(provider, {
-      ...options,
-      chainId: network.chainId,
-    });
-  }
-
   get contract() {
     return this.multicall;
   }
@@ -72,10 +61,7 @@ export class EthersMulticall {
   async setProvider(provider: Provider, chainId?: number) {
     chainId ??= (await provider.getNetwork()).chainId;
 
-    const multicallAddress = MULTICALL_ADDRESSES[chainId];
-    if (!multicallAddress) throw new Error(`Multicall not supported on chain with id "${chainId}"`);
-
-    this.multicall = Multicall__factory.connect(multicallAddress, provider);
+    this.multicall = Multicall3__factory.connect(this.multicall.address, provider);
   }
 
   private async doCalls(allCalls: ContractCall[]) {
@@ -83,31 +69,57 @@ export class EthersMulticall {
       allCalls.map(async (call, index) => ({
         ...call,
         index,
-        blockTag: await call.overrides?.blockTag,
+        overrides: call.overrides ? await resolveProperties(call.overrides) : undefined,
       }))
     );
 
-    const blockTagCalls = resolvedCalls.reduce((acc, { blockTag, ...call }) => {
-      blockTag = (blockTag ?? this.defaultBlockTag).toString();
+    const blockTagCalls = resolvedCalls.reduce((acc, call) => {
+      const blockTag = (call.overrides?.blockTag ?? this.defaultBlockTag).toString();
 
       return {
         ...acc,
-        [blockTag]: (acc[blockTag] ?? []).concat([call]),
+        [blockTag]: [call].concat(acc[blockTag] ?? []),
       };
-    }, {} as { [blockTag: BlockTag]: WithIndex<ContractCall>[] });
+    }, {} as { [blockTag: BlockTag]: typeof resolvedCalls });
 
     const results: any[] = [];
     await Promise.all(
-      Object.values(blockTagCalls).map(async (calls) => {
+      Object.entries(blockTagCalls).map(async ([blockTagStr, calls]) => {
         const callStructs = calls.map((call) => ({
           target: call.address,
           callData: new Interface([]).encodeFunctionData(call.fragment, call.params),
         }));
         const overrides = calls.map(({ overrides }) => overrides).find(Boolean);
+        const blockTag = DIGIT_REGEX.test(blockTagStr) ? parseInt(blockTagStr, 10) : blockTagStr;
 
-        const res = overrides
-          ? await this.multicall.callStatic.aggregate(callStructs, false, overrides)
-          : await this.multicall.callStatic.aggregate(callStructs, false);
+        const res = await this.multicall.callStatic
+          .aggregate(callStructs, { ...overrides, blockTag })
+          .catch(async (error) => {
+            if (
+              error.code === "CALL_EXCEPTION" &&
+              error.data === "0x" &&
+              error.reason == null &&
+              error.errorName == null &&
+              error.errorArgs == null
+            )
+              return {
+                blockNumber: blockTag,
+                returnData: await Promise.all(
+                  callStructs.map(async (call) =>
+                    this.multicall.provider.call(
+                      {
+                        ...overrides,
+                        to: call.target,
+                        data: call.callData,
+                      },
+                      blockTag
+                    )
+                  )
+                ),
+              };
+
+            throw error;
+          });
 
         if (res.returnData.length !== calls.length)
           throw new Error(
@@ -117,17 +129,9 @@ export class EthersMulticall {
         calls.forEach((call, i) => {
           const signature = FunctionFragment.from(call.fragment).format();
           const callIdentifier = [call.address, signature].join(":");
-          const [success, data] = res.returnData[i];
-
-          if (!success) {
-            const error = new Error(`Multicall call failed for ${callIdentifier}`);
-            error.stack = call.stack;
-
-            return (results[call.index] = error);
-          }
 
           try {
-            const result = new Interface([]).decodeFunctionResult(call.fragment, data);
+            const result = new Interface([]).decodeFunctionResult(call.fragment, res.returnData[i]);
 
             return (results[call.index] = call.fragment.outputs!.length === 1 ? result[0] : result);
           } catch (err: any) {
