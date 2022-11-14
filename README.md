@@ -41,6 +41,33 @@ const uni = multicall.wrap(
 Promise.all([uni.name(), uni.symbol(), uni.decimals()]).then(console.log);
 ```
 
+## Limitations
+
+- When performing calls in parallel, a single incorrect call may revert and make the aggregated call to the Multicall contract revert ; effectively throwing multiple errors in your code. The following example illustrates this limitation:
+
+```typescript
+const performCall = async (address: string) => {
+  const erc20 = await multicall.wrap(new ethers.Contract(address, ERC20Abi));
+
+  try {
+    const symbol = await erc20.symbol();
+  } catch {
+    return console.error("An error occurred while fetching the symbol of token:", address);
+  }
+};
+
+Promise.all(
+  [
+    "0x056Fd409E1d7A124BD7017459dFEa2F387b6d5Cd", // valid GUSD token address
+    "0x0000000000000000000000000000000000000000", // invalid ERC20 token address
+  ].map(performCall)
+);
+
+// prints 2 errors:
+// An error occurred while fetching the symbol of token: 0x056Fd409E1d7A124BD7017459dFEa2F387b6d5Cd
+// An error occurred while fetching the symbol of token: 0x0000000000000000000000000000000000000000
+```
+
 [build-img]: https://github.com/morpho-labs/ethers-multicall/actions/workflows/release.yml/badge.svg
 [build-url]: https://github.com/morpho-labs/ethers-multicall/actions/workflows/release.yml
 [downloads-img]: https://img.shields.io/npm/dt/@morpho-labs/ethers-multicall
