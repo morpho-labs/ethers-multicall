@@ -1,7 +1,7 @@
 import DataLoader from "dataloader";
-import { BaseContract, BigNumber, CallOverrides } from "ethers";
+import { BaseContract, CallOverrides } from "ethers";
 import { FunctionFragment, Interface, resolveProperties } from "ethers/lib/utils";
-import _clone from "lodash/clone";
+import _cloneDeep from "lodash/cloneDeep";
 
 import { BlockTag, Provider } from "@ethersproject/providers";
 
@@ -151,15 +151,11 @@ export class EthersMulticall {
   }
 
   wrap<T extends BaseContract>(contract: T) {
-    const copy = Object.setPrototypeOf(_clone(contract), Object.getPrototypeOf(contract));
-    copy.callStatic = _clone(contract.callStatic);
-    copy.functions = _clone(contract.functions);
+    const copy = Object.setPrototypeOf(_cloneDeep(contract), Object.getPrototypeOf(contract));
+    copy.callStatic = _cloneDeep(contract.callStatic);
+    copy.functions = _cloneDeep(contract.functions);
 
-    const uniqueNames: { [name: string]: string[] } = {};
-    Object.entries(contract.interface.functions).forEach(([signature, fragment]) => {
-      if (!uniqueNames[`%${fragment.name}`]) uniqueNames[`%${fragment.name}`] = [];
-      uniqueNames[`%${fragment.name}`].push(signature);
-
+    const defineFunction = (property: string, fragment: FunctionFragment) => {
       const descriptor = {
         enumerable: true,
         writable: false,
@@ -174,22 +170,28 @@ export class EthersMulticall {
       };
 
       // Overwrite the function with a dataloader batched call
-      Object.defineProperty(copy, signature, descriptor);
-      Object.defineProperty(copy.callStatic, signature, descriptor);
-      Object.defineProperty(copy.functions, signature, descriptor);
-    });
+      Object.defineProperty(copy, property, descriptor);
+      Object.defineProperty(copy.callStatic, property, descriptor);
+      Object.defineProperty(copy.functions, property, descriptor);
+    };
 
-    Object.entries(uniqueNames).forEach(([name, signatures]) => {
+    const uniqueNames: { [name: string]: FunctionFragment[] } = {};
+
+    Object.entries(contract.interface.functions)
+      .filter(([, fragment]) => ["view", "pure"].includes(fragment.stateMutability))
+      .forEach(([signature, fragment]) => {
+        if (!uniqueNames[`%${fragment.name}`]) uniqueNames[`%${fragment.name}`] = [];
+        uniqueNames[`%${fragment.name}`].push(fragment);
+
+        defineFunction(signature, fragment);
+      });
+
+    Object.entries(uniqueNames).forEach(([name, fragments]) => {
       // Ambiguous names to not get attached as bare names
-      if (signatures.length > 1) return;
+      if (fragments.length > 1) return;
 
       // Strip off the leading "%" used for prototype protection
-      name = name.substring(1);
-
-      const signature = signatures[0];
-      Object.defineProperty(copy, name, copy[signature]);
-      Object.defineProperty(copy.callStatic, name, copy.callStatic[signature]);
-      Object.defineProperty(copy.functions, name, copy.functions[signature]);
+      defineFunction(name.substring(1), fragments[0]);
     });
 
     return copy as T;
