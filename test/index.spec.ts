@@ -1,28 +1,29 @@
 import * as dotenv from "dotenv";
-import { ethers } from "ethers";
+import { ethers, utils } from "ethers";
+import _range from "lodash/range";
 
 import { EthersMulticall } from "../src";
 
 import MorphoAbi from "./abis/Morpho.json";
-import UniswapAbi from "./abis/Uni.json";
+import UniAbi from "./abis/Uni.json";
 
 dotenv.config({ path: ".env.local" });
 
 const httpRpcUrl = process.env.HTTP_RPC_URL || "https://rpc.ankr.com/eth";
 
-let rpcProvider: ethers.providers.JsonRpcProvider;
-let signer: ethers.Signer;
-
-let _morpho: ethers.Contract;
-let _uni: ethers.Contract;
-
 describe("ethers-multicall", () => {
+  let rpcProvider: ethers.providers.JsonRpcProvider;
+  let signer: ethers.Signer;
+
+  let morpho: ethers.Contract;
+  let uni: ethers.Contract;
+
   beforeEach(() => {
     rpcProvider = new ethers.providers.JsonRpcProvider(httpRpcUrl, 1);
     signer = new ethers.Wallet(ethers.Wallet.createRandom().privateKey, rpcProvider);
 
-    _morpho = new ethers.Contract("0x8888882f8f843896699869179fB6E4f7e3B58888", MorphoAbi, signer);
-    _uni = new ethers.Contract("0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", UniswapAbi, signer);
+    morpho = new ethers.Contract("0x8888882f8f843896699869179fB6E4f7e3B58888", MorphoAbi, signer);
+    uni = new ethers.Contract("0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", UniAbi, signer);
   });
 
   describe("Providers integration", () => {
@@ -32,9 +33,9 @@ describe("ethers-multicall", () => {
       expect(multicall.contract.provider).toBe(rpcProvider);
       expect(multicall.contract.address).toBe("0xcA11bde05977b3631167028862bE2a173976CA11");
 
-      const wrappedMorpho = multicall.wrap(_morpho);
+      const wrappedMorpho = multicall.wrap(morpho);
 
-      expect(wrappedMorpho.address).toBe(_morpho.address);
+      expect(wrappedMorpho.address).toBe(morpho.address);
       expect(await wrappedMorpho.cEth()).toBe("0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5");
     });
 
@@ -45,9 +46,9 @@ describe("ethers-multicall", () => {
       expect(multicall.contract.provider).toBe(rpcBatchProvider);
       expect(multicall.contract.address).toBe("0xcA11bde05977b3631167028862bE2a173976CA11");
 
-      const wrappedMorpho = multicall.wrap(_morpho);
+      const wrappedMorpho = multicall.wrap(morpho);
 
-      expect(wrappedMorpho.address).toBe(_morpho.address);
+      expect(wrappedMorpho.address).toBe(morpho.address);
       expect(await wrappedMorpho.cEth()).toBe("0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5");
     });
   });
@@ -55,7 +56,7 @@ describe("ethers-multicall", () => {
   describe("Calls batching", () => {
     it("should batch UNI calls inside Promise.all", async () => {
       const multicall = new EthersMulticall(rpcProvider);
-      const wrappedUni = multicall.wrap(_uni);
+      const wrappedUni = multicall.wrap(uni);
 
       const send = rpcProvider.send.bind(rpcProvider);
 
@@ -84,7 +85,7 @@ describe("ethers-multicall", () => {
 
     it("should batch UNI calls without Promise.all", async () => {
       const multicall = new EthersMulticall(rpcProvider);
-      const wrappedUni = multicall.wrap(_uni);
+      const wrappedUni = multicall.wrap(uni);
 
       const send = rpcProvider.send.bind(rpcProvider);
 
@@ -111,7 +112,7 @@ describe("ethers-multicall", () => {
 
     it("should fetch UNI.balanceOf(cUNI) at block 14_000_000", async () => {
       const multicall = new EthersMulticall(rpcProvider);
-      const wrappedUni = multicall.wrap(_uni);
+      const wrappedUni = multicall.wrap(uni);
 
       const balance = await wrappedUni.balanceOf("0x35A18000230DA775CAc24873d00Ff85BccdeD550", {
         blockTag: 14_000_000,
@@ -122,7 +123,7 @@ describe("ethers-multicall", () => {
 
     it("should fetch UNI.balanceOf(cUNI) at default block 14_000_000", async () => {
       const multicall = new EthersMulticall(rpcProvider, { defaultBlockTag: 14_000_000 });
-      const wrappedUni = multicall.wrap(_uni);
+      const wrappedUni = multicall.wrap(uni);
 
       const balance = await wrappedUni.balanceOf("0x35A18000230DA775CAc24873d00Ff85BccdeD550");
 
@@ -133,7 +134,7 @@ describe("ethers-multicall", () => {
       const rpcProvider2 = new ethers.providers.JsonRpcProvider(httpRpcUrl, 1);
 
       const multicall = new EthersMulticall(rpcProvider);
-      const wrappedUni = multicall.wrap(_uni);
+      const wrappedUni = multicall.wrap(uni);
 
       const send = rpcProvider.send.bind(rpcProvider);
       const send2 = rpcProvider2.send.bind(rpcProvider2);
@@ -166,7 +167,7 @@ describe("ethers-multicall", () => {
     it("should throw a descriptive Error when querying unknown contract", async () => {
       const multicall = new EthersMulticall(rpcProvider);
       const wrappedUnknown = multicall.wrap(
-        new ethers.Contract("0xd6409e50c05879c5B9E091EB01E9Dd776d00A151", UniswapAbi)
+        new ethers.Contract("0xd6409e50c05879c5B9E091EB01E9Dd776d00A151", UniAbi, signer)
       );
 
       expect(wrappedUnknown.symbol).rejects.toThrow(
@@ -175,5 +176,18 @@ describe("ethers-multicall", () => {
         )
       );
     });
+
+    // it("should retry with half payload when query too large", async () => {
+    //   const multicall = new EthersMulticall(rpcProvider);
+    //   const wrappedUni = multicall.wrap(uni);
+
+    //   await Promise.all(
+    //     _range(100_000).map((i) => {
+    //       const address = utils.hexZeroPad("0x" + i.toString(16), 20);
+
+    //       return wrappedUni.allowance(address, address);
+    //     })
+    //   );
+    // });
   });
 });
