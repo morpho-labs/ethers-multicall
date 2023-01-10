@@ -176,18 +176,5 @@ describe("ethers-multicall", () => {
         )
       );
     });
-
-    // it("should retry with half payload when query too large", async () => {
-    //   const multicall = new EthersMulticall(rpcProvider);
-    //   const wrappedUni = multicall.wrap(uni);
-
-    //   await Promise.all(
-    //     _range(100_000).map((i) => {
-    //       const address = utils.hexZeroPad("0x" + i.toString(16), 20);
-
-    //       return wrappedUni.allowance(address, address);
-    //     })
-    //   );
-    // });
   });
 });

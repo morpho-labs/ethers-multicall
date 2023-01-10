@@ -136,7 +136,6 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "testTimeout": 300000,
     "testMatch": [
       "**/test/**/*.spec.ts"
     ],
