@@ -1,7 +1,7 @@
 import DataLoader from "dataloader";
-import { BaseContract, BigNumber, CallOverrides } from "ethers";
+import { BaseContract, CallOverrides } from "ethers";
 import { FunctionFragment, Interface, resolveProperties } from "ethers/lib/utils";
-import _clone from "lodash/clone";
+import _cloneDeep from "lodash/cloneDeep";
 
 import { BlockTag, Provider } from "@ethersproject/providers";
 
@@ -151,17 +151,11 @@ export class EthersMulticall {
   }
 
   wrap<T extends BaseContract>(contract: T) {
-    const copy = Object.setPrototypeOf(_clone(contract), Object.getPrototypeOf(contract));
-    copy.callStatic = _clone(contract.callStatic);
-    copy.functions = _clone(contract.functions);
+    const copy = Object.setPrototypeOf(_cloneDeep(contract), Object.getPrototypeOf(contract));
+    copy.callStatic = _cloneDeep(contract.callStatic);
+    copy.functions = _cloneDeep(contract.functions);
 
-    (
-      contract.interface.fragments.filter(
-        (fragment) =>
-          fragment.type === "function" &&
-          ["pure", "view"].includes((fragment as FunctionFragment).stateMutability)
-      ) as FunctionFragment[]
-    ).forEach((fragment) => {
+    const defineFunction = (property: string, fragment: FunctionFragment) => {
       const descriptor = {
         enumerable: true,
         writable: false,
@@ -176,9 +170,28 @@ export class EthersMulticall {
       };
 
       // Overwrite the function with a dataloader batched call
-      Object.defineProperty(copy, fragment.name, descriptor);
-      Object.defineProperty(copy.callStatic, fragment.name, descriptor);
-      Object.defineProperty(copy.functions, fragment.name, descriptor);
+      Object.defineProperty(copy, property, descriptor);
+      Object.defineProperty(copy.callStatic, property, descriptor);
+      Object.defineProperty(copy.functions, property, descriptor);
+    };
+
+    const uniqueNames: { [name: string]: FunctionFragment[] } = {};
+
+    Object.entries(contract.interface.functions).forEach(([signature, fragment]) => {
+      if (!["view", "pure"].includes(fragment.stateMutability)) return;
+
+      if (!uniqueNames[`%${fragment.name}`]) uniqueNames[`%${fragment.name}`] = [];
+      uniqueNames[`%${fragment.name}`].push(fragment);
+
+      defineFunction(signature, fragment);
+    });
+
+    Object.entries(uniqueNames).forEach(([name, fragments]) => {
+      // Ambiguous names to not get attached as bare names
+      if (fragments.length > 1) return;
+
+      // Strip off the leading "%" used for prototype protection
+      defineFunction(name.substring(1), fragments[0]);
     });
 
     return copy as T;

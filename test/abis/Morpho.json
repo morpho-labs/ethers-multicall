@@ -641,6 +641,45 @@
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "deltas",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "p2pSupplyDelta",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "p2pBorrowDelta",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "p2pSupplyAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "p2pBorrowAmount",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "dustThreshold",
     "outputs": [
