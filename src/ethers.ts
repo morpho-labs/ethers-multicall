@@ -1,7 +1,6 @@
 import DataLoader from "dataloader";
 import { BaseContract, CallOverrides } from "ethers";
 import { FunctionFragment, Interface, resolveProperties } from "ethers/lib/utils";
-import _cloneDeep from "lodash/cloneDeep";
 
 import { BlockTag, Provider } from "@ethersproject/providers";
 
@@ -151,12 +150,13 @@ export class EthersMulticall {
   }
 
   wrap<T extends BaseContract>(contract: T) {
-    const copy = Object.setPrototypeOf(_cloneDeep(contract), Object.getPrototypeOf(contract));
-    copy.callStatic = _cloneDeep(contract.callStatic);
-    copy.functions = _cloneDeep(contract.functions);
+    const copy = Object.setPrototypeOf({ ...contract }, Object.getPrototypeOf(contract));
+    copy.callStatic = { ...contract.callStatic };
+    copy.functions = { ...contract.functions };
 
     const defineFunction = (property: string, fragment: FunctionFragment) => {
       const descriptor = {
+        configurable: true,
         enumerable: true,
         writable: false,
         value: (...params: any) =>

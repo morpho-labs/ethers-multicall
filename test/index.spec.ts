@@ -1,5 +1,5 @@
 import * as dotenv from "dotenv";
-import { ethers, utils } from "ethers";
+import { ethers } from "ethers";
 import _range from "lodash/range";
 
 import { EthersMulticall } from "../src";
