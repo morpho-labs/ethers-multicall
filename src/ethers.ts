@@ -177,14 +177,14 @@ export class EthersMulticall {
 
     const uniqueNames: { [name: string]: FunctionFragment[] } = {};
 
-    Object.entries(contract.interface.functions)
-      .filter(([, fragment]) => ["view", "pure"].includes(fragment.stateMutability))
-      .forEach(([signature, fragment]) => {
-        if (!uniqueNames[`%${fragment.name}`]) uniqueNames[`%${fragment.name}`] = [];
-        uniqueNames[`%${fragment.name}`].push(fragment);
+    Object.entries(contract.interface.functions).forEach(([signature, fragment]) => {
+      if (!["view", "pure"].includes(fragment.stateMutability)) return;
 
-        defineFunction(signature, fragment);
-      });
+      if (!uniqueNames[`%${fragment.name}`]) uniqueNames[`%${fragment.name}`] = [];
+      uniqueNames[`%${fragment.name}`].push(fragment);
+
+      defineFunction(signature, fragment);
+    });
 
     Object.entries(uniqueNames).forEach(([name, fragments]) => {
       // Ambiguous names to not get attached as bare names
