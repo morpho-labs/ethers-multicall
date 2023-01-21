@@ -176,5 +176,18 @@ describe("ethers-multicall", () => {
         )
       );
     });
+
+    it.only("should query filters", async () => {
+      const multicall = new EthersMulticall(rpcProvider);
+      const wrappedUni = multicall.wrap(uni);
+
+      const events = await wrappedUni.queryFilter(
+        wrappedUni.filters.Transfer(),
+        14_000_000,
+        14_002_000
+      );
+
+      expect(events).toHaveLength(269);
+    });
   });
 });
