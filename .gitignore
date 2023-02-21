@@ -118,3 +118,4 @@ dist
 # Compiled code
 lib/
 cache/
+.vscode
