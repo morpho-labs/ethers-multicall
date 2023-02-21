@@ -9,7 +9,6 @@ import { Multicall3, Multicall3__factory } from "./contracts";
 export type ContractCall = {
   fragment: FunctionFragment;
   address: string;
-  stack?: string;
   params: any[];
   overrides?: CallOverrides;
 };
@@ -18,7 +17,7 @@ export const isMulticallUnderlyingError = (err: Error) =>
   err.message.includes("Multicall call failed for");
 
 const DIGIT_REGEX = /^\d+$/;
-const DEFAULT_DATALOADER_OPTIONS = { cache: true, maxBatchSize: 512 };
+const DEFAULT_DATALOADER_OPTIONS = {};
 
 export interface EthersMulticallOptions {
   chainId: number;
@@ -26,9 +25,11 @@ export interface EthersMulticallOptions {
   options: DataLoader.Options<ContractCall, any>;
 }
 
+export type MulticallResult = Multicall3.ResultStructOutput | { error: any };
+
 export class EthersMulticall {
   private multicall: Multicall3;
-  private dataLoader: DataLoader<ContractCall, any>;
+  private dataLoader: DataLoader<ContractCall, MulticallResult>;
 
   public defaultBlockTag: BlockTag;
 
@@ -44,11 +45,7 @@ export class EthersMulticall {
       "0xcA11bde05977b3631167028862bE2a173976CA11",
       provider
     );
-    this.dataLoader = new DataLoader(
-      // @ts-ignore
-      this.doCalls.bind(this),
-      options
-    );
+    this.dataLoader = new DataLoader(this.doCalls.bind(this), options);
 
     this.defaultBlockTag = defaultBlockTag;
   }
@@ -63,7 +60,7 @@ export class EthersMulticall {
     this.multicall = Multicall3__factory.connect(this.multicall.address, provider);
   }
 
-  private async doCalls(allCalls: ContractCall[]) {
+  private async doCalls(allCalls: ReadonlyArray<ContractCall>) {
     const resolvedCalls = await Promise.all(
       allCalls.map(async (call, index) => ({
         ...call,
@@ -81,7 +78,8 @@ export class EthersMulticall {
       };
     }, {} as { [blockTag: BlockTag]: typeof resolvedCalls });
 
-    const results: any[] = [];
+    const results: MulticallResult[] = [];
+
     await Promise.all(
       Object.entries(blockTagCalls).map(async ([blockTagStr, calls]) => {
         const callStructs = calls.map((call) => ({
@@ -91,58 +89,25 @@ export class EthersMulticall {
         const overrides = calls.map(({ overrides }) => overrides).find(Boolean);
         const blockTag = DIGIT_REGEX.test(blockTagStr) ? parseInt(blockTagStr, 10) : blockTagStr;
 
-        const res = await this.multicall.callStatic
-          .aggregate(callStructs, { ...overrides, blockTag })
-          .catch(async (error) => {
-            if (
-              error.code === "CALL_EXCEPTION" &&
-              error.data === "0x" &&
-              error.reason == null &&
-              error.errorName == null &&
-              error.errorArgs == null
-            )
-              return {
-                blockNumber: blockTag,
-                returnData: await Promise.all(
-                  callStructs.map(async (call) =>
-                    this.multicall.provider.call(
-                      {
-                        ...overrides,
-                        to: call.target,
-                        data: call.callData,
-                      },
-                      blockTag
-                    )
-                  )
-                ),
-              };
-
-            throw error;
+        try {
+          const res = await this.multicall.callStatic.tryAggregate(false, callStructs, {
+            ...overrides,
+            blockTag,
           });
 
-        if (res.returnData.length !== calls.length)
-          throw new Error(
-            `Unexpected multicall response length: received ${res.returnData.length}; expected ${calls.length}`
-          );
-
-        calls.forEach((call, i) => {
-          const signature = FunctionFragment.from(call.fragment).format();
-          const callIdentifier = [call.address, signature].join(":");
-
-          try {
-            const result = new Interface([]).decodeFunctionResult(call.fragment, res.returnData[i]);
-
-            return (results[call.index] = call.fragment.outputs!.length === 1 ? result[0] : result);
-          } catch (err: any) {
-            const error = new Error(
-              `Multicall result decoding failed for ${callIdentifier}: ${err.message}`
+          if (res.length !== calls.length)
+            throw new Error(
+              `Unexpected multicall response length: received ${res.length}; expected ${calls.length}`
             );
-            error.name = error.message;
-            error.stack = call.stack;
 
-            throw error;
-          }
-        });
+          calls.forEach((call, i) => {
+            results[call.index] = res[i];
+          });
+        } catch (error: any) {
+          calls.forEach((call) => {
+            results[call.index] = { error };
+          });
+        }
       })
     );
 
@@ -159,14 +124,30 @@ export class EthersMulticall {
         configurable: true,
         enumerable: true,
         writable: false,
-        value: (...params: any) =>
-          this.dataLoader.load({
+        value: async (...params: any) => {
+          const res = await this.dataLoader.load({
             fragment,
             address: contract.address,
-            stack: new Error().stack?.split("\n").slice(1).join("\n"),
             params: params.slice(0, fragment.inputs.length),
             overrides: params[fragment.inputs.length],
-          }),
+          });
+
+          if ("error" in res) throw res.error;
+
+          const signature = FunctionFragment.from(fragment).format();
+          const callIdentifier = [contract.address, signature].join(":");
+
+          if (!res.success) throw Error(`${callIdentifier} call revert exception`);
+          if (res.returnData === "0x") throw Error(`${callIdentifier} empty return data exception`);
+
+          try {
+            const result = new Interface([]).decodeFunctionResult(fragment, res.returnData);
+
+            return fragment.outputs?.length === 1 ? result[0] : result;
+          } catch (err: any) {
+            throw new Error(`Multicall decoding failed for ${callIdentifier}: ${err.message}`);
+          }
+        },
       };
 
       // Overwrite the function with a dataloader batched call
