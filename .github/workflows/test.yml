@@ -2,9 +2,6 @@ name: Jest Test Suite
 
 on:
   pull_request:
-    branches-ignore:
-      - main
-      - next
     paths:
       - src/**
       - test/**
@@ -15,6 +12,7 @@ on:
 jobs:
   jest:
     runs-on: ubuntu-latest
+    if: github.head_ref != 'next' # already triggered by push
 
     strategy:
       matrix:
