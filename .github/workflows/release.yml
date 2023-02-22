@@ -1,13 +1,11 @@
 name: Publish package release
 
 on:
-  workflow_call:
-    secrets:
-      NPM_TOKEN:
-        required: true
   workflow_run:
-    workflows: ["Jest Test Suite"]
-    branches: [main]
+    workflows: [Jest Test Suite]
+    branches:
+      - main
+      - next
     types:
       - completed
 
