@@ -1,24 +1,16 @@
 name: Jest Test Suite
 
 on:
-  push:
-    branches:
-      - main
-      - next
   pull_request:
     paths:
       - src/**
       - test/**
-      - jest.config.js
       - package.json
       - yarn.lock
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 jobs:
-  build:
+  jest:
     runs-on: ubuntu-latest
 
     strategy:
@@ -26,16 +18,17 @@ jobs:
         node-version: [14.x, 16.x, 18.x]
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v3
         with:
           node-version: ${{ matrix.node-version }}
           cache: yarn
 
       - name: Install dependencies
-        run: yarn
+        run: yarn --frozen-lockfile
 
       - name: Run Jest test suite
         run: yarn test

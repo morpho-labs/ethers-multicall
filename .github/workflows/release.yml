@@ -1,37 +1,35 @@
-name: Publish package release
+name: Release
 
 on:
-  workflow_run:
-    workflows: [Jest Test Suite]
-    branches:
-      - main
-      - next
-    types:
-      - completed
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: lts/*
+    secrets:
+      NPM_TOKEN:
+        required: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  release:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+  semantic-release:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup Node.js ${{ inputs.node-version }}
         uses: actions/setup-node@v3
         with:
-          node-version: lts/*
+          node-version: ${{ inputs.node-version }}
           cache: yarn
 
       - name: Install dependencies
-        run: yarn
+        run: yarn --frozen-lockfile
 
       - name: Build package
         run: yarn build
