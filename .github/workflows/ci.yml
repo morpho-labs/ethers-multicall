@@ -1,0 +1,21 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - next
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: morpho-labs/ethers-multicall/.github/workflows/test.yml@main
+
+  release:
+    needs: test
+
+    uses: morpho-labs/ethers-multicall/.github/workflows/release.yml@main
+    secrets: inherit
