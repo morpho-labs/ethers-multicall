@@ -1,3 +1,5 @@
+name: Push
+
 on:
   push:
     branches:
