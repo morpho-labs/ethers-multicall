@@ -2,6 +2,9 @@ name: Jest Test Suite
 
 on:
   pull_request:
+    branches-ignore:
+      - main
+      - next
     paths:
       - src/**
       - test/**
