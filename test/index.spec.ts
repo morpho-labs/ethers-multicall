@@ -83,6 +83,25 @@ describe("ethers-multicall", () => {
       ]);
     });
 
+    it("should gracefully fail in a Promise.all when batching queries where one query reverts", async () => {
+      const multicall = new EthersMulticall(rpcProvider);
+      const wrappedUni = multicall.wrap(uni);
+      const wrappedUnknown = multicall.wrap(
+        new ethers.Contract("0xd6409e50c05879c5B9E091EB01E9Dd776d00A151", UniAbi, signer)
+      );
+
+      expect(Promise.all([wrappedUni.symbol(), wrappedUnknown.symbol()])).resolves.toEqual([
+        "UNI",
+        {
+          address: "0xd6409e50c05879c5B9E091EB01E9Dd776d00A151",
+          error: new Error(
+            "0xd6409e50c05879c5B9E091EB01E9Dd776d00A151:symbol() empty return data exception"
+          ),
+          params: [],
+        },
+      ]);
+    });
+
     it("should batch UNI calls without Promise.all", async () => {
       const multicall = new EthersMulticall(rpcProvider);
       const wrappedUni = multicall.wrap(uni);

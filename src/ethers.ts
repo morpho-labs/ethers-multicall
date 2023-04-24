@@ -137,8 +137,18 @@ export class EthersMulticall {
           const signature = FunctionFragment.from(fragment).format();
           const callIdentifier = [contract.address, signature].join(":");
 
-          if (!res.success) throw Error(`${callIdentifier} call revert exception`);
-          if (res.returnData === "0x") throw Error(`${callIdentifier} empty return data exception`);
+          if (!res.success)
+            return {
+              error: Error(`${callIdentifier} call revert exception`),
+              address: contract.address,
+              params: params.slice(0, fragment.inputs.length),
+            };
+          if (res.returnData === "0x")
+            return {
+              error: Error(`${callIdentifier} empty return data exception`),
+              address: contract.address,
+              params: params.slice(0, fragment.inputs.length),
+            };
 
           try {
             const result = new Interface([]).decodeFunctionResult(fragment, res.returnData);
