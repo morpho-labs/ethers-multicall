@@ -1,5 +1,7 @@
 # ethers-multicall
 
+### This package is deprecated in favor of [ethers-multicall-provider](https://github.com/rubilmax/ethers-multicall-provider) which enables better debugging and independent contract calls!
+
 [![npm package][npm-img]][npm-url]
 [![Build Status][build-img]][build-url]
 [![Downloads][downloads-img]][downloads-url]
